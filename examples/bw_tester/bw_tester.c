@@ -132,6 +132,10 @@ int main(int argc, char **argv)
     ret = r_w_obj(fs, pool, &obj, num_writes, wrt_nbytes, false, verify, rand_num);
     if(ret)
       goto close;
+
+    ret = fla_object_close(fs , pool, &obj);
+    if(ret)
+      goto close;
   }
 
 close:

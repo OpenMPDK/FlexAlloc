@@ -572,7 +572,6 @@ fla_mkfs(struct fla_mkfs_p *p)
   }
 
   memset(fs, 0, sizeof(struct flexalloc));
-  TAILQ_INIT(&fs->zs_thead);
   fla_md_buf_len = fla_geo_nbytes(&geo);
   fla_md_buf = fla_xne_alloc_buf(md_dev, fla_md_buf_len);
   if (FLA_ERR(!fla_md_buf, "fla_xne_alloc_buf()"))
@@ -719,9 +718,6 @@ fla_base_close(struct flexalloc *fs)
 
   if (!fs)
     return 0;
-
-  if (fla_geo_zoned(&fs->geo))
-    fla_znd_manage_zones_cleanup(fs);
 
   err = fla_flush(fs);
   if(FLA_ERR(err, "fla_flush()"))
@@ -1227,28 +1223,14 @@ int
 fla_base_object_destroy(struct flexalloc *fs, struct fla_pool * pool_handle,
                         struct fla_object * obj)
 {
-
   int err = 0;
   struct fla_slab_header * slab;
   struct fla_pool_entry * pool_entry;
   uint32_t * from_head, * to_head;
-  uint64_t obj_slba = fla_object_slba(fs, obj, pool_handle);
-  uint32_t obj_zn = obj_slba / (fs->geo.nzsect);
-  struct fla_zs_entry *z_entry;
 
   if (fla_geo_zoned(&fs->geo))
   {
-    TAILQ_FOREACH(z_entry, &fs->zs_thead, entries)
-    {
-      if (z_entry->zone_number == obj_zn)
-        break;
-    }
-
-    if (z_entry) // We found the entry so remove
-      TAILQ_REMOVE(&fs->zs_thead, z_entry, entries);
-
-    err = fla_xne_dev_znd_send_mgmt(fs->dev.dev, obj_slba, XNVME_SPEC_ZND_CMD_MGMT_SEND_RESET,
-                                    false);
+    err = fla_znd_manage_zones_object_reset(fs, pool_handle, obj);
     if (FLA_ERR(err, "fla_xne_dev_znd_reset()"))
       goto exit;
   }
@@ -1472,17 +1454,12 @@ fla_object_write(struct flexalloc * fs, struct fla_pool const * pool_handle,
 {
   int err = 0;
   uint64_t obj_eoffset, obj_soffset, w_soffset, w_eoffset, slab_eoffset;
-  uint32_t obj_zn;
   struct fla_pool_entry *pool_entry = &fs->pools.entries[pool_handle->ndx];
 
   obj_eoffset = fla_object_eoffset(fs, obj, pool_handle);
   obj_soffset = fla_object_soffset(fs, obj, pool_handle);
   w_soffset = obj_soffset + w_offset;
   w_eoffset = w_soffset + w_len;
-  obj_zn = w_soffset / (fs->geo.nzsect * fla_fs_lb_nbytes(fs));
-
-  if (fla_geo_zoned(&fs->geo))
-    fla_znd_manage_zones(fs, obj_zn);
 
   slab_eoffset = (fla_geo_slab_lb_off(fs, obj->slab_id) + fs->geo.slab_nlb) * fs->geo.lb_nbytes;
   if((err = FLA_ERR(slab_eoffset < obj_eoffset, "Write outside slab")))
@@ -1511,9 +1488,6 @@ fla_object_write(struct flexalloc * fs, struct fla_pool const * pool_handle,
   if(FLA_ERR(err, "fla_xne_sync_seq_w_nbytes()"))
     goto exit;
 
-  if (fla_geo_zoned(&fs->geo) && w_eoffset == obj_eoffset)
-    fla_znd_zone_full(fs, obj_zn);
-
 exit:
   return err;
 }
@@ -1526,17 +1500,12 @@ fla_object_unaligned_write(struct flexalloc * fs, struct fla_pool const * pool_h
   int err = 0;
   void * bounce_buf, * buf;
   size_t bounce_buf_size,  aligned_sb, aligned_eb, orig_sb, orig_eb;
-  uint32_t obj_zn;
 
   orig_sb = (fla_object_slba(fs, obj, pool_handle) * fs->dev.lb_nbytes) + obj_offset;
   orig_eb = orig_sb + len;
-  obj_zn = orig_sb / (fs->geo.nzsect * fla_fs_lb_nbytes(fs));
   aligned_sb = (orig_sb / fs->dev.lb_nbytes) * fs->dev.lb_nbytes;
   aligned_eb = FLA_CEIL_DIV(orig_eb, fs->dev.lb_nbytes) * fs->dev.lb_nbytes;
   bounce_buf_size = aligned_eb - aligned_sb;
-
-  if (fla_geo_zoned(&fs->geo))
-    fla_znd_manage_zones(fs, obj_zn);
 
   bounce_buf = fla_xne_alloc_buf(fs->dev.dev, bounce_buf_size);
   if(FLA_ERR(!bounce_buf, "fla_buf_alloc()"))
@@ -1679,6 +1648,21 @@ struct fla_fns base_fns =
   .pool_set_root_object = &fla_base_pool_set_root_object,
   .pool_get_root_object = &fla_base_pool_get_root_object,
 };
+
+int
+fla_object_close(struct flexalloc *fs, struct fla_pool const *pool_handle, struct fla_object *obj)
+{
+  int err = 0;
+
+  if (fla_fs_zns(fs))
+  {
+    err = fla_znd_manage_zones_object_finish(fs, pool_handle, obj);
+    if (FLA_ERR(err, "fla_znd_manage_zones_object_finish()"))
+      return err;
+  }
+
+  return err;
+}
 
 int
 fla_open(struct fla_open_opts *opts, struct flexalloc **fs)

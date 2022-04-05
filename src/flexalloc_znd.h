@@ -7,18 +7,13 @@
  */
 #ifndef __FLEXALLOC_ZND_H_
 #define __FLEXALLOC_ZND_H_
-#include <sys/queue.h>
-#include <stdint.h>
 #include "src/flexalloc.h"
 
+int
+fla_znd_manage_zones_object_finish(struct flexalloc *fs, struct fla_pool const *pool_handle,
+                                   struct fla_object *obj);
 
-void
-fla_znd_zone_full(struct flexalloc *fs, uint32_t zone);
-
-void
-fla_znd_manage_zones_cleanup(struct flexalloc *fs);
-
-void
-fla_znd_manage_zones(struct flexalloc *fs, uint32_t zone);
-
+int
+fla_znd_manage_zones_object_reset(struct flexalloc *fs, struct fla_pool const *pool_handle,
+                                  struct fla_object * obj);
 #endif // __FLEXALLOC_ZND_H
