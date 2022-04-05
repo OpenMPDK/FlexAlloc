@@ -90,3 +90,4 @@ fla_pool_get_root_object(struct flexalloc const * const fs,
 {
   return fs->fns.pool_get_root_object(fs, pool, object);
 }
+
