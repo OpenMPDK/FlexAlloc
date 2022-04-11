@@ -25,10 +25,10 @@ main(int argc, char ** argv)
   bool fla_test_set = is_globalenv_set("FLA_TEST_DEV");
   struct test_vals test_vals [FLA_UT_SLAB_NUMBER_OF_TESTS] =
   {
-    {.npools = 2, .slab_nlb = 2, .disk_min_lbs = 9, .obj_nlb = 1 }
-    , {.npools = 2, .slab_nlb = 2, .disk_min_lbs = 21, .obj_nlb = 1 }
-    , {.npools = 2, .slab_nlb = 20, .disk_min_lbs = 50, .obj_nlb = 2 }
-    , {.npools = 2, .slab_nlb = 5, .disk_min_lbs = 18, .obj_nlb = 1 }
+    {.npools = 2, .slab_nlb = 2, .disk_min_lbs = fla_test_set?0:9, .obj_nlb = 1 }
+    , {.npools = 2, .slab_nlb = 2, .disk_min_lbs = fla_test_set?0:21, .obj_nlb = 1 }
+    , {.npools = 2, .slab_nlb = 20, .disk_min_lbs = fla_test_set?0:50, .obj_nlb = 2 }
+    , {.npools = 2, .slab_nlb = 5, .disk_min_lbs = fla_test_set?0:18, .obj_nlb = 1 }
   };
 
   for(int i = 0 ; i < FLA_UT_SLAB_NUMBER_OF_TESTS ; ++i)

@@ -3,6 +3,7 @@
 // Copyright (C) 2021 Adam Manzanares <a.manzanares@samsung.com>
 #include <asm-generic/errno-base.h>
 #include <libxnvme.h>
+#include <libxnvme_geo.h>
 #include <libxnvmec.h>
 #include <stdint.h>
 #include <limits.h>
@@ -524,6 +525,7 @@ fla_init(struct fla_geo *geo, struct xnvme_dev *dev, struct xnvme_dev *md_dev, v
   return 0;
 }
 
+
 int
 fla_mkfs(struct fla_mkfs_p *p)
 {
@@ -545,17 +547,6 @@ fla_mkfs(struct fla_mkfs_p *p)
   err = fla_dev_sanity_check(dev, md_dev);
   if(FLA_ERR(err, "fla_dev_sanity_check()"))
     goto exit;
-
-
-  if (md_dev)
-  {
-    err |= fla_xne_dev_lba_nbytes(md_dev) != fla_xne_dev_lba_nbytes(dev);
-    if (err)
-    {
-      FLA_ERR(err, "MD DEV LBA size != DEV LBA SIZE");
-      goto exit;
-    }
-  }
 
   err = fla_mkfs_geo_calc(dev, md_dev, p->npools, p->slab_nlb, &geo);
   if(FLA_ERR(err, "fla_mkfs_geo_calc()"))
