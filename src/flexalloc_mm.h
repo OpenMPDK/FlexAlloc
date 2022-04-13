@@ -292,5 +292,7 @@ fla_object_slba(struct flexalloc const * fs, struct fla_object const * obj,
 int
 fla_open_common(char const *dev_uri, struct flexalloc *fs);
 
+void
+fla_print_fs(struct flexalloc *fs);
 #endif // __FLEXALLOC_MM_H_
 

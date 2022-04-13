@@ -606,7 +606,7 @@ fla_ut_dev_use_device(struct fla_ut_dev *dev)
   return dev->_is_loop;
 }
 
-static int
+int
 fla_t_round_slab_size(struct fla_ut_dev * test_dev, uint32_t * slab_min_blocks)
 {
   int err = 0;
