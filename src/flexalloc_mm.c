@@ -340,16 +340,15 @@ fla_geo_slabs_lb_off(struct fla_geo const *geo)
 uint64_t
 fla_geo_slab_lb_off(struct flexalloc const *fs, uint32_t slab_id)
 {
-  uint64_t slabs_base = fla_geo_slabs_lb_off(&fs->geo);
-  uint64_t slab_base;
+  uint64_t slabs_base = 0, slab_base;
 
-  if (fs->dev.md_dev)
-    slabs_base = 0;
+  if (fs->dev.md_dev == NULL)
+    slabs_base = fla_geo_slabs_lb_off(&fs->geo);
 
   slab_base = slabs_base + (slab_id * fs->geo.slab_nlb);
   if (fla_geo_zoned(&fs->geo) && slab_base % fs->geo.nzsect)
   {
-    slab_base += fs->geo.nzsect - slabs_base;
+    slab_base += (slab_base % fs->geo.nzsect);
   }
 
   return slab_base;
