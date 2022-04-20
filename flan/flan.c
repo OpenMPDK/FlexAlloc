@@ -263,13 +263,29 @@ int flan_object_create(const char *name, struct flan_handle *flanh, struct flan_
 
 }
 
+static int revcmp(char const * l, char const * r)
+{
+  size_t l_len = strlen(l), r_len = strlen(r);
+  size_t min_len = XNVME_MIN(l_len, r_len);
+  char const * last_l = l + l_len;
+  char const * last_r = r + r_len;
+  int i;
+
+  if(min_len == 0)
+    return l_len != r_len;
+  else
+  {
+    for (i = 0;i < min_len && *(last_l--) == *(last_r--); ++i);
+    return !(i == min_len);
+  }
+}
+
 struct flan_oinfo *flan_find_oinfo(struct flan_handle *flanh, const char *name)
 {
   struct flan_oinfo *oinfo;
 
   flan_reset_pool_dir();
-  while (((oinfo = flan_get_oinfo(flanh, false)) != NULL) &&
-         strncmp(oinfo->name, name, FLAN_OBJ_NAME_LEN_MAX));
+  while (((oinfo = flan_get_oinfo(flanh, false)) != NULL) && revcmp(oinfo->name, name));
 
   return oinfo;
 }
