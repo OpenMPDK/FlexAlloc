@@ -44,7 +44,7 @@ int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name,
   open_opts.opts = &x_opts;
   open_opts.opts->async = "io_uring_cmd";
   if (mddev_uri)
-	  open_opts.md_dev_uri = mddev_uri;
+    open_opts.md_dev_uri = mddev_uri;
 
   ret = fla_open(&open_opts, &((*flanh)->fs));
   if (ret)
@@ -62,7 +62,7 @@ int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name,
   obj_nlb = objsz / fla_fs_lb_nbytes((*flanh)->fs);
   ret = fla_pool_open((*flanh)->fs, pool_name, &((*flanh)->ph));
   if (ret == -1)
-	  ret = fla_pool_create((*flanh)->fs, pool_name, strlen(pool_name), obj_nlb, &((*flanh)->ph));
+    ret = fla_pool_create((*flanh)->fs, pool_name, strlen(pool_name), obj_nlb, &((*flanh)->ph));
 
   if (ret)
   {
