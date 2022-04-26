@@ -1452,8 +1452,13 @@ fla_object_write(struct flexalloc * fs, struct fla_pool const * pool_handle,
     sp.write = true;
     err = fla_xne_async_strp_seq_x(fs->dev.dev, buf, &sp);
   }
+  if(obj->entry_ndx == 0 && pool_handle->ndx == 0 && obj->slab_id == 0)
+  {
+    fprintf(stderr, "object ID: %"PRIu32", pooll ID: %"PRIu32", slab ID : %"PRIu32"", obj->entry_ndx, pool_handle->ndx, obj->slab_id);
+  }
 
-  if(FLA_ERR(err, "fla_xne_sync_seq_w_nbytes()"))
+  if(FLA_ERR(err, "fla_object_write object ID: %"PRIu32", pooll ID: %"PRIu32", " \
+             "slab ID : %"PRIu32"", obj->entry_ndx, pool_handle->ndx, obj->slab_id))
     goto exit;
 
 exit:
