@@ -405,7 +405,7 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
   }
 
   // Read the data into the append buffer
-  if (flan_otable[ff_oh].append_off < flan_obj_sz * 64 && flags && (bool)FLAN_OPEN_FLAG_WRITE)
+  if (flan_otable[ff_oh].append_off < flan_obj_sz * 64 && flags & FLAN_OPEN_FLAG_WRITE)
   {
     noh = &oinfo->fla_oh;
     fla_object_read(flanh->fs, flanh->ph, noh, flan_otable[ff_oh].append_buf,
