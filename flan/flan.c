@@ -405,7 +405,7 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
   }
 
   // Read the data into the append buffer
-  if (flan_otable[ff_oh].append_off < flan_obj_sz * 64 && flags && FLAN_OPEN_FLAG_WRITE)
+  if (flan_otable[ff_oh].append_off < flan_obj_sz * 64 && flags && (bool)FLAN_OPEN_FLAG_WRITE)
   {
     noh = &oinfo->fla_oh;
     fla_object_read(flanh->fs, flanh->ph, noh, flan_otable[ff_oh].append_buf,
@@ -865,12 +865,12 @@ int flan_object_close(uint64_t oh, struct flan_handle *flanh)
     }
 
     // Seal the object
-    if (append_off && flanh->is_zns)
-      fla_object_seal(flanh->fs, flanh->ph, noh);
+    if (append_off)
+      fla_object_close(flanh->fs, flanh->ph, noh);
 
     // TODO fix this issue
     if (flan_otable[oh].flan_oh.slab_id != flan_dir.fla_oh.slab_id &&
-		    flan_otable[oh].flan_oh.entry_ndx != flan_dir.fla_oh.entry_ndx)
+        flan_otable[oh].flan_oh.entry_ndx != flan_dir.fla_oh.entry_ndx)
     {
       printf("MD will be inconsistent\n");
     }
