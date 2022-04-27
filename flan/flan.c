@@ -1,5 +1,7 @@
 // Copyright (C) 2021 Adam Manzanares <a.manzanares@samsung.com>
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -25,6 +27,65 @@ void flan_cleanup(void)
 int flan_pool_set_strp(struct flan_handle *flanh, uint32_t num_strp, uint32_t strp_sz)
 {
   return fla_pool_set_strp(flanh->fs, flanh->ph, num_strp, strp_sz);
+}
+
+void flan_get_cur_to_start(struct flan_handle *flanh, bool search_for_last)
+{
+  struct flan_oinfo *oinfo, *oinfo_prev;
+
+  /* we don't bother if it is not ZNS*/
+  if(!flanh->is_zns)
+  {
+    flan_dir.cur = 0;
+    return;
+  }
+
+  oinfo = ((struct flan_oinfo *)flan_dir.buf + flan_oi_ob);
+  if (oinfo->size == UINT64_MAX)
+  {
+    printf ("We have a root object that if FULL!!!!! ERROR");
+    return;
+  }
+
+  if(search_for_last)
+  {
+    flan_dir.dev_last = 0;
+  }
+
+  /* We asume that we have already setup flan_dir.buf correctly */
+  for(unsigned int i = flan_oi_ob - 1 ; i > 0 ; --i)
+  {
+    oinfo_prev = ((struct flan_oinfo *)flan_dir.buf + i);
+    oinfo = ((struct flan_oinfo *)flan_dir.buf + i - 1);
+
+    if (search_for_last && flan_dir.dev_last == 0
+        && oinfo_prev->size == 0 && oinfo->size != 0
+        && oinfo_prev->name[0] == '\0'  && oinfo->name[0] != '\0')
+    {
+      //we found the end of the device
+      flan_dir.dev_last = i - 1;
+      //ceil it to the next block size
+      uint64_t mod_div =
+        ((flan_dir.dev_last * sizeof(struct flan_oinfo)) % flan_dev_bs(flanh));
+      if(mod_div > 0)
+      {
+        uint64_t dist_to_next_bs_align = flan_dev_bs(flanh) - mod_div;
+        flan_dir.dev_last += (dist_to_next_bs_align / sizeof(struct flan_oinfo));
+      }
+
+    }
+
+    /*We stop when we find the first end*/
+    if(oinfo->size == UINT64_MAX && !strcmp("ZNSEND", oinfo->name))
+    {
+       flan_dir.cur = i;
+       return;
+    }
+  }
+
+  printf("We have encountered an error finding the cur start\n");
+  flan_dir.cur = 0;
+  return;
 }
 
 int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name, uint64_t objsz,
@@ -103,6 +164,10 @@ int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name,
         printf("Error initial write md object \n");
         goto out_free_buf;
       }
+    } else
+    {
+      ((struct flan_oinfo *)flan_dir.buf)->size = UINT64_MAX;
+      memcpy(((struct flan_oinfo *)flan_dir.buf)->name, "ZNSEND", 6);
     }
 
     // Set the acquired object to the root object
@@ -115,7 +180,8 @@ int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name,
     ret = fla_object_read((*flanh)->fs, (*flanh)->ph, &robj, flan_dir.buf, 0, flan_obj_sz);
   }
 
-  flan_dir.cur = 0;
+  //flan_dir.cur = 0;
+  flan_get_cur_to_start(*flanh, true);
   root = *flanh;
   atexit(flan_cleanup);
   return ret;
@@ -140,7 +206,8 @@ int flan_init_dirhandle(struct flan_handle *flanh)
 
   if (flan_dir.cur == FLAN_DHANDLE_NONE)
   {
-    flan_dir.cur = 0;
+    //flan_dir.cur = 0;
+    flan_get_cur_to_start(flanh, false);
     if (!flanh->is_zns)
     {
       ret = fla_pool_get_root_object(flanh->fs, flanh->ph, &robj);
@@ -475,13 +542,29 @@ void flan_close(struct flan_handle *flanh)
 
   flan_otable_close(flanh);
 
-  if (flanh->is_zns && !flanh->is_dirty) // Also clean case, TODO make this independent of ZNS
+  if (!flanh->is_dirty) // Also clean case, TODO make this independent of ZNS
     goto free;
 
-  if (fla_object_write(flanh->fs, flanh->ph, &flan_dir.fla_oh, flan_dir.buf, 0, flan_obj_sz))
+  if(!flanh->is_zns)
   {
-    printf("Error writing md during close\n");
-    exit(0);
+    if (fla_object_write(flanh->fs, flanh->ph, &flan_dir.fla_oh, flan_dir.buf, 0, flan_obj_sz))
+    {
+      printf("Error writing md during close\n");
+      exit(0);
+    }
+  } else
+  {
+    unsigned int real_dev_last = flan_dir.dev_last * sizeof(struct flan_oinfo);
+    // after this call flan_dir.dev_last will have the buffer last not the device last
+    flan_get_cur_to_start(flanh, true);
+    uint64_t buf_offset = (flan_dir.cur-1) * sizeof(struct flan_oinfo);
+    uint64_t buf_size = (flan_dir.dev_last * sizeof(struct flan_oinfo)) - buf_offset;
+
+    if(fla_object_write(flanh->fs, flanh->ph, &flan_dir.fla_oh, flan_dir.buf + buf_offset, real_dev_last, buf_size))
+    {
+      printf("Error writing md during close ZNS\n");
+      exit(0);
+    }
   }
 
 free:

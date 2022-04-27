@@ -1429,7 +1429,7 @@ fla_object_write(struct flexalloc * fs, struct fla_pool const * pool_handle,
   w_soffset = obj_soffset + w_offset;
   w_eoffset = w_soffset + w_len;
 
-  if(fla_geo_zoned(&fs->geo) && w_offset == 0)
+  /*if(fla_geo_zoned(&fs->geo) && w_offset == 0)
   {
     for(uint32_t i = 0 ; i < pool_entry->strp_nobjs ; ++i)
     {
@@ -1439,7 +1439,7 @@ fla_object_write(struct flexalloc * fs, struct fla_pool const * pool_handle,
       err = fla_znd_manage_zones_object_reset(fs, pool_handle, &o);
       FLA_ERR(err, "fla_znd_manage_zones_object_reset()");
     }
-  }
+  }*/
 
   slab_eoffset = (fla_geo_slab_lb_off(fs, obj->slab_id) + fs->geo.slab_nlb) * fs->geo.lb_nbytes;
   if((err = FLA_ERR(slab_eoffset < obj_eoffset, "Write outside a slab")))

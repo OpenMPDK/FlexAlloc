@@ -30,6 +30,7 @@ struct flan_dirhandle
   char *buf;
   unsigned int cur;
   struct fla_object fla_oh;
+  unsigned int dev_last;
 };
 
 struct flan_handle
