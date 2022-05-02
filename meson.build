@@ -13,7 +13,7 @@ if get_option('FLEXALLOC_XNVME_IGNORE_MDTS')
 endif
 
 ### Dependencies ###
-xnvme_deps = dependency('xnvme', version : '>=0.0.28' )
+xnvme_deps = dependency('xnvme', version : '>=0.2.0' )
 
 ### Files ###
 libflexalloc_header_dirs = include_directories('./src')

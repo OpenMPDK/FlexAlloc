@@ -384,8 +384,8 @@ submit:
   }
 
 close_queue:
-  ret = xnvme_queue_wait(queue);
-  if((err = FLA_ERR(ret < 0, "xnvme_queue_wait")))
+  ret = xnvme_queue_drain(queue);
+  if((err = FLA_ERR(ret < 0, "xnvme_queue_drain")))
     goto exit;
 
   if (queue)
