@@ -3,6 +3,7 @@
 #include "flexalloc_util.h"
 #include "flexalloc_mm.h"
 #include "flexalloc_ll.h"
+#include "libflexalloc.h"
 #include <stdint.h>
 
 struct test_vals
@@ -13,15 +14,16 @@ struct test_vals
   uint32_t obj_nlb;
 };
 
-static int test_slabs(const struct test_vals * test_vals);
-static int test_check_slab_pointers(struct flexalloc * fs, const uint32_t expected_size);
-
 #define FLA_UT_SLAB_NUMBER_OF_TESTS 4
+static int test_get_one_more_than_max_objects(struct test_vals test_vals);
+static int test_slabs(struct test_vals test_vals);
+static int test_check_slab_pointers(struct flexalloc * fs, const uint32_t expected_size);
 
 int
 main(int argc, char ** argv)
 {
-  int err = 0;
+  int err;
+  bool fla_test_dev_set = is_globalenv_set("FLA_TEST_DEV");
   struct test_vals test_vals [FLA_UT_SLAB_NUMBER_OF_TESTS] =
   {
     {.npools = 2, .slab_nlb = 2, .disk_min_lbs = 9, .obj_nlb = 1 }
@@ -32,19 +34,98 @@ main(int argc, char ** argv)
 
   for(int i = 0 ; i < FLA_UT_SLAB_NUMBER_OF_TESTS ; ++i)
   {
-    err = test_slabs(&test_vals[i]);
+    if(fla_test_dev_set)
+      test_vals[i].disk_min_lbs = 0;
+    err = test_slabs(test_vals[i]);
     if(FLA_ERR(err, "test_slabs()"))
-    {
       goto exit;
-    };
+
+    err = test_get_one_more_than_max_objects(test_vals[i]);
+    if(FLA_ERR(err, "test_get_one_more_than_max_objects()"))
+      goto exit;
   }
 
 exit:
   return err;
 }
 
+
 int
-test_slabs(const struct test_vals * test_vals)
+test_get_one_more_than_max_objects(struct test_vals test_vals)
+{
+  int err = 0, ret;
+  struct fla_ut_dev dev;
+  struct flexalloc *fs;
+  struct fla_pool * pool_handle;
+  struct fla_object obj_handle;
+  struct fla_pool_entry * pool_entry;
+  char * pool_name = "name";
+
+  err = fla_ut_dev_init(test_vals.disk_min_lbs, &dev);
+  if (FLA_ERR(err, "fla_ut_dev_init()"))
+    goto exit;
+
+  /* Skip real devs
+   * The way we test slabs requires us to create slab sizes of 2 lbs
+   * For devices with lots of lbs, it takes too long. Skip it while
+   * we come up with a better way of doing things.
+   * if(test_vals->disk_min_lbs == 0)
+   *   test_vals->disk_min_lbs = dev.nblocks;
+   */
+  if(test_vals.disk_min_lbs != dev.nblocks)
+    goto exit;
+
+
+  if(test_vals.disk_min_lbs == 0)
+    test_vals.disk_min_lbs = dev.nblocks;
+
+  err = fla_ut_fs_create(test_vals.slab_nlb, test_vals.npools, &dev, &fs);
+  if (FLA_ERR(err, "fla_ut_fs_create()"))
+    goto exit;
+
+  if(dev._is_zns)
+    test_vals.obj_nlb = dev.nsect_zn;
+
+  /*
+   * Disk has to be able to house at least 2 slabs for this tests
+   * We skip test if the total size of device is too small for this test
+   */
+  if (fs->geo.nslabs < 2)
+    return err;
+
+  err = fla_pool_create(fs, pool_name, strlen(pool_name), test_vals.obj_nlb, &pool_handle);
+  if(FLA_ERR(err, "fla_pool_create()"))
+    goto close_fs;
+
+  pool_entry = &fs->pools.entries[pool_handle->ndx];
+
+  // +1 because we need to go over the slab capacity in objects
+  for (uint64_t i = 0 ; i < pool_entry->slab_nobj + 1  ; ++i)
+  {
+    err = fla_object_create(fs, pool_handle, &obj_handle);
+    if(FLA_ERR(err, "fla_object_create()"))
+      goto close_pool;
+  }
+
+close_pool:
+  // We cannot close the pool here because we have all the open
+  // objects. We need to add something so we can close all objects
+  // in a pool
+  /*ret = fla_pool_destroy(fs, pool_handle);
+  if(FLA_ERR(ret, "fla_pool_destroy()"))
+    err = ret;*/
+
+close_fs:
+  ret = fla_ut_fs_teardown(fs);
+  if (FLA_ERR(ret, "fla_ut_fs_teardown()"))
+    err = ret;
+
+exit:
+  return err;
+}
+
+int
+test_slabs(struct test_vals test_vals)
 {
   int err = 0, ret;
   struct fla_ut_dev dev;
@@ -53,11 +134,30 @@ test_slabs(const struct test_vals * test_vals)
   uint64_t available_lb_for_slabs;
   uint32_t expected_slabs;
 
-  err = fla_ut_dev_init(test_vals->disk_min_lbs, &dev);
+  err = fla_ut_dev_init(test_vals.disk_min_lbs, &dev);
+
   if (FLA_ERR(err, "fla_ut_dev_init()"))
   {
     goto exit;
   }
+
+  /*
+   * Skip for ZNS.
+   * If we are testing ZNS, we will automatically modify slab size
+   * rendering all our tests useless.
+   */
+  if(dev._is_zns)
+    goto exit;
+
+  /* Skip real devs
+   * The way we test slabs requires us to create slab sizes of 2 lbs
+   * For devices with lots of lbs, it takes too long. Skip it while
+   * we come up with a better way of doing things.
+   * if(test_vals->disk_min_lbs == 0)
+   *   test_vals->disk_min_lbs = dev.nblocks;
+   */
+  if(test_vals.disk_min_lbs != dev.nblocks)
+    goto exit;
 
   slab_error = malloc(sizeof(struct fla_slab_header));
   if (FLA_ERR(!slab_error, "malloc()"))
@@ -66,19 +166,17 @@ test_slabs(const struct test_vals * test_vals)
     goto exit;
   }
 
-  fprintf(stderr, "slab_nlb %"PRIu32", npools %"PRIu32"\n", test_vals->slab_nlb, test_vals->npools);
-  err = fla_ut_fs_create(test_vals->slab_nlb, test_vals->npools, &dev, &fs);
+  err = fla_ut_fs_create(test_vals.slab_nlb, test_vals.npools, &dev, &fs);
   if (FLA_ERR(err, "fla_ut_fs_create()"))
   {
     goto free_slab_error;
   }
 
-
-  FLA_ASSERTF(test_vals->disk_min_lbs > fla_geo_slabs_lb_off(&fs->geo),
+  FLA_ASSERTF(test_vals.disk_min_lbs > fla_geo_slabs_lb_off(&fs->geo),
               "Slabs start after disk has ended (%"PRIu64" > %"PRIu64"",
-              test_vals->disk_min_lbs, fla_geo_slabs_lb_off(&fs->geo));
-  available_lb_for_slabs = test_vals->disk_min_lbs - fla_geo_slabs_lb_off(&fs->geo);
-  expected_slabs = available_lb_for_slabs / test_vals->slab_nlb;
+              test_vals.disk_min_lbs, fla_geo_slabs_lb_off(&fs->geo));
+  available_lb_for_slabs = test_vals.disk_min_lbs - fla_geo_slabs_lb_off(&fs->geo);
+  expected_slabs = available_lb_for_slabs / test_vals.slab_nlb;
 
   /* Test values in struct fla_slabs */
   err |= FLA_ASSERTF(*fs->slabs.fslab_num == expected_slabs,
@@ -97,7 +195,7 @@ test_slabs(const struct test_vals * test_vals)
   {
     slab_header = (void*)fs->slabs.headers + (slab_offset * sizeof(struct fla_slab_header));
 
-    err = fla_acquire_slab(fs, test_vals->obj_nlb, &slab_header);
+    err = fla_acquire_slab(fs, test_vals.obj_nlb, &slab_header);
     if(FLA_ERR(err, "fla_acquire_slab()"))
     {
       goto close_fs;
@@ -129,7 +227,7 @@ test_slabs(const struct test_vals * test_vals)
   }
 
   /* If we acquire another slab, we should receive an error */
-  ret = fla_acquire_slab(fs, test_vals->obj_nlb, &slab_error);
+  ret = fla_acquire_slab(fs, test_vals.obj_nlb, &slab_error);
   err = FLA_ASSERT(ret != 0, "Acquire of an empty free list did NOT fail");
   if(FLA_ERR(err, "FLA_ASSERT()"))
   {

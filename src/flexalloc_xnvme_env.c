@@ -609,6 +609,13 @@ fla_xne_dev_type(const struct xnvme_dev *dev)
   return geo->type;
 }
 
+uint32_t
+fla_xne_dev_mdts_nbytes(const struct xnvme_dev *dev)
+{
+  struct xnvme_geo const *geo = xnvme_dev_get_geo(dev);
+  return geo->mdts_nbytes;
+}
+
 int
 fla_xne_dev_open(const char *dev_uri, struct xnvme_opts *opts, struct xnvme_dev **dev)
 {
@@ -636,31 +643,4 @@ void
 fla_xne_dev_close(struct xnvme_dev *dev)
 {
   xnvme_dev_close(dev);
-}
-
-int
-fla_xne_dev_sanity_check(struct xnvme_dev const * dev, struct xnvme_dev const *md_dev)
-{
-  int err = 0;
-  struct xnvme_geo const * geo = xnvme_dev_get_geo(dev);
-  struct xnvme_geo const *md_geo = NULL;
-
-  if (md_dev)
-    md_geo = xnvme_dev_get_geo(md_dev);
-
-  /*
-   * xNVMe's linux backend can potentially fallback on an incorrect minimum data transfer
-   * (mdts) value if application is not executed with admin privileges. Check here that we
-   * have an mdts of 512 bytes.
-   */
-  err |= geo->mdts_nbytes <= 512; /* TODO get rid of these magic values */
-  if (md_dev)
-    err |= md_geo->mdts_nbytes <= 512;
-
-  FLA_ERR(err, "The minimum data transfer value of dev or md_dev reported to be less than 512."
-          \
-          " This is most probably due to lack of administrative privileges. you can solve " \
-          " this by running with sudo for example.");
-
-  return err;
 }

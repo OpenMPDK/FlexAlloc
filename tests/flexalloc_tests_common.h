@@ -56,6 +56,9 @@ struct fla_ut_dev
 
 #define FLA_TEST_SKIP_RETCODE 77
 
+bool
+is_globalenv_set(char const * glb);
+
 int
 fla_ut_lpbk_dev_alloc(uint64_t block_size, uint64_t nblocks, struct fla_ut_lpbk **loop);
 
@@ -193,5 +196,8 @@ fla_expr_assert(char *expr_s, int expr_result, char *err_msg, const char *func,
  */
 #define FLA_ASSERTF(expr, err_msg, ...)       \
   fla_expr_assert(#expr, expr, err_msg, __func__, __LINE__,  __VA_ARGS__)
+
+int
+fla_t_round_slab_size(struct fla_ut_dev * test_dev, uint32_t * slab_min_blocks);
 
 #endif /* __FLEXALLOC_TESTS_COMMON_H */

@@ -3,6 +3,7 @@
 // Copyright (C) 2021 Adam Manzanares <a.manzanares@samsung.com>
 
 #define _XOPEN_SOURCE 500
+#include <libxnvme_geo.h>
 #include "tests/flexalloc_tests_common.h"
 #include "flexalloc_xnvme_env.h"
 #include "flexalloc_util.h"
@@ -519,11 +520,10 @@ fla_ut_lpbk_fs_destroy(struct fla_ut_lpbk *lpbk, struct flexalloc *fs)
   return err;
 }
 
-int
-fla_ut_fs_use_device()
+bool
+is_globalenv_set(char const * glb)
 {
-  char *dev_uri = getenv("FLA_TEST_DEV");
-  return dev_uri != NULL;
+  return getenv(glb) != NULL;
 }
 
 int
@@ -531,13 +531,13 @@ fla_ut_dev_init(uint64_t disk_min_blocks, struct fla_ut_dev *dev)
 {
   struct xnvme_dev *xdev;
   int err = 0;
-
-  dev->_dev_uri = getenv("FLA_TEST_DEV");
-  dev->_md_dev_uri = getenv("FLA_MD_DEV");
   dev->_is_zns = 0;
+  dev->_md_dev_uri = NULL;
 
-  if (dev->_dev_uri != NULL)
+  if(is_globalenv_set("FLA_TEST_DEV"))
   {
+    dev->_dev_uri = getenv("FLA_TEST_DEV");
+    dev->_md_dev_uri = getenv("FLA_TEST_MD_DEV");
     dev->_is_loop = 0;
     err = fla_xne_dev_open(dev->_dev_uri, NULL, &xdev);
     if (FLA_ERR(err, "fla_xne_dev_open()"))
@@ -607,6 +607,25 @@ fla_ut_dev_use_device(struct fla_ut_dev *dev)
 }
 
 int
+fla_t_round_slab_size(struct fla_ut_dev * test_dev, uint32_t * slab_min_blocks)
+{
+  int err = 0;
+  struct xnvme_dev * dev;
+  err = fla_xne_dev_open(test_dev->_dev_uri, NULL, &dev);
+
+  if (fla_xne_dev_type(dev) == XNVME_GEO_ZONED)
+  {
+    uint64_t zsz = fla_xne_dev_znd_sect(dev);
+    uint64_t div_res = *slab_min_blocks % zsz;
+    if (div_res > 0 )
+      *slab_min_blocks += (zsz - div_res);
+  }
+
+  fla_xne_dev_close(dev);
+  return err;
+}
+
+int
 fla_ut_fs_create(uint32_t slab_min_blocks, uint32_t npools,
                  struct fla_ut_dev *dev, struct flexalloc **fs)
 {
@@ -627,6 +646,7 @@ fla_ut_fs_create(uint32_t slab_min_blocks, uint32_t npools,
     }
   }
 
+  fla_t_round_slab_size(dev, &slab_min_blocks);
   mkfs_params.dev_uri = (char *)dev->_dev_uri;
   mkfs_params.md_dev_uri = (char *)dev->_md_dev_uri;
   mkfs_params.slab_nlb = slab_min_blocks;

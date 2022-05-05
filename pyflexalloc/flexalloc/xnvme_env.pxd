@@ -76,7 +76,6 @@ cdef extern from "flexalloc_xnvme_env.h" nogil:
     uint32_t fla_xne_dev_lba_nbytes(xnvme_dev *dev)
     int fla_xne_dev_open(const char *dev_uri, xnvme_opts *opts, xnvme_dev **dev)
     void fla_xne_dev_close(xnvme_dev *dev)
-    int fla_xne_dev_sanity_check(const xnvme_dev *dev)
 
 
 cdef class XnvmeDev:

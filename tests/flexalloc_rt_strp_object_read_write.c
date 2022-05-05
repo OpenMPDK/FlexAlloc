@@ -28,7 +28,7 @@ struct test_vals tests[] =
     .strp_nobj = 2, .strp_nlbs = 1, .xfer_snlb = 0, .xfer_nlbs = 4
   },
 
-  // start from second chunk and warap around
+  // start from second chunk and wrap around
   {
     .blk_num = 40000, .slab_nlb = 4000, .npools = 1, .obj_nlb = 16,
     .strp_nobj = 4, .strp_nlbs = 4, .xfer_snlb = 4, .xfer_nlbs = 16
@@ -62,7 +62,12 @@ test_strp(struct test_vals test_vals)
 
   if (dev._is_zns)
   {
-    test_vals.slab_nlb = dev.nsect_zn;
+    // why *2? -> To run these tests we need at least one striped object. The
+    // slab must have enough space to fit the striped object (nsect_zn *
+    // strp_nobj) and the metadata. We can calculate the meatadata and grow it
+    // by that size or take out the big hammer and just double the size. I
+    // chose the latter.
+    test_vals.slab_nlb = dev.nsect_zn * test_vals.strp_nobj * 2;
     test_vals.obj_nlb = dev.nsect_zn;
   }
 
@@ -129,9 +134,20 @@ test_strp(struct test_vals test_vals)
   if(FLA_ERR(err, "fla_obj_read()"))
     goto free_read_buffer;
 
-  // compare that the string (and terminating NULL) was read back
+  /*
+   * Compare that the string (and terminating NULL) was read back
+   *
+   * If we are on a ZNS drive and xfer_snlb > 0 the write should fail
+   * and the write_buf shall be different than read_buf
+   */
   err = memcmp(write_buf,  read_buf, buf_len + 1);
-  if(FLA_ERR(err, "memcmp() - failed to read back the written value"))
+  if(dev._is_zns)
+  {
+    if(test_vals.xfer_snlb > 0)
+      err = !(err != 0);
+  }
+
+  if(FLA_ERR(err, "Unexpected value for memcmp"))
     goto free_write_buffer;
 
   // Free the object, which should reset a zone

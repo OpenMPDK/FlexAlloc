@@ -153,6 +153,9 @@ fla_xne_dev_znd_sect(const struct xnvme_dev *dev);
 enum xnvme_geo_type
 fla_xne_dev_type(const struct xnvme_dev *dev);
 
+uint32_t
+fla_xne_dev_mdts_nbytes(const struct xnvme_dev *dev);
+
 int
 fla_xne_dev_open(const char *dev_uri, struct xnvme_opts *opts, struct xnvme_dev **dev);
 
