@@ -41,8 +41,8 @@ void split(const std::string &in, char delim, std::vector<std::string> &pieces)
     p_end = in.find(delim, p_start);
   }
 
-  pieces.push_back(in.substr(p_start, in.size() - p_start));
 
+  pieces.push_back(in.substr(p_start, in.size() - p_start));
 }
 
 std::unique_ptr<Env>
@@ -71,6 +71,7 @@ LibFlanEnv::LibFlanEnv(Env *env, const std::string &flan_opts)
   if (opts.size() == 4)
     md_dev_uri = opts[3];
 
+  //std::cout << "Starting a flan environmnet" << std::endl;
   if (flan_init(dev_uri.c_str(), md_dev_uri.c_str(), ROCKSDB_POOLNAME, target_file_size_base / 64,
         &flanh))
       throw std::runtime_error(std::string("Error initializing flan:"));
@@ -174,7 +175,8 @@ LibFlanEnv::DeleteDir(const std::string& name)
 LibFlanEnv::GetFileSize(const std::string& fname, uint64_t* size)
 {
   //std::lock_guard<std::mutex> guard(*(options->flan_mut));
-  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, fname.c_str());
+  uint32_t res_cur;
+  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, fname.c_str(), &res_cur);
   
   if(!oinfo)
     return Status::NotFound();
@@ -409,7 +411,7 @@ LibFlanEnvWriteableFile::LibFlanEnvWriteableFile(
     
   //auto end = std::chrono::high_resolution_clock::now();
   //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  //std::cout << "Writeable File:" << fname << " : creation time(us):"<< duration.count() << std::endl;
+  //std::cout << "Writeable File:" << fname << " oh : " << fh->object_handle <<  std::endl;
   fh->opens++;
 }
 
@@ -429,7 +431,7 @@ LibFlanEnvWriteableFile::Append(const Slice& slice)
 
   //auto end = std::chrono::high_resolution_clock::now();
   //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  //std::cout << "File:" << fname << " append size:" << slice.size_ << " wof:" << fh->woffset_ << std::endl;
+  //std::cout << "File:" << fname << " append size:" << slice.size_ << " wof:" << fh->woffset_ << " oh : " << fh->object_handle << std::endl;
   //std::cout << "Time(us)):" << duration.count() << std::endl;
   fh->e_o_f_ += slice.size_;
   fh->woffset_ += slice.size_;
@@ -485,6 +487,7 @@ LibFlanEnvWriteableFile::Close()
 {
   //std::cout << "Calling " << __func__ << ", fname " << fname << std::endl;
   //std::lock_guard<std::mutex> guard(*lnfs_mut);
+  //std::cout << " Closing oh : " << fh->object_handle << std::endl;
   flan_object_close(fh->object_handle, fh->flanh);
   return Status::OK();
 }

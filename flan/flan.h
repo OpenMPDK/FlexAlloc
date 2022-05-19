@@ -72,7 +72,7 @@ uint32_t flan_dev_bs(struct flan_handle *flanh);
 int flan_object_rename(const char *oldname, const char *newname, struct flan_handle *flanh);
 int flan_sync(struct flan_handle *flanh);
 bool flan_is_zns(struct flan_handle *flanh);
-struct flan_oinfo *flan_find_oinfo(struct flan_handle *flanh, const char *name);
+struct flan_oinfo *flan_find_oinfo(struct flan_handle *flanh, const char *name, uint32_t *cur);
 int flan_pool_set_strp(struct flan_handle *flanh, uint32_t num_strp, uint32_t strp_sz);
 #ifdef __cplusplus
 }

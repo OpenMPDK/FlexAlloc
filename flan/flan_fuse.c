@@ -55,6 +55,7 @@ static int flan_fuse_getattr(const char *path, struct stat *stbuf,
 	struct flan_oinfo *oinfo;
 	(void) fi;
 	char *path_dup = strdup(path);
+	uint32_t res_cur;
 
 	memset(stbuf, 0, sizeof(struct stat));
 	if (strcmp(path, "/") == 0) {
@@ -63,7 +64,7 @@ static int flan_fuse_getattr(const char *path, struct stat *stbuf,
 		goto out;
 	}
 
-	oinfo = flan_find_oinfo(flanh, basename(path_dup));
+	oinfo = flan_find_oinfo(flanh, basename(path_dup), &res_cur);
 	if (oinfo) {
 		stbuf->st_mode = S_IFREG | 0444;
 		stbuf->st_nlink = 1;

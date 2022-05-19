@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <libgen.h>
+#include <pthread.h>
 
 #include "flan.h"
 
@@ -16,6 +17,7 @@ unsigned int num_objects;
 unsigned int flan_obj_sz;
 unsigned int flan_oi_ob;
 struct flan_handle *root;
+static pthread_mutex_t flan_mutex;
 
 struct flan_ohandle flan_otable[FLAN_MAX_OPEN_OBJECTS];
 
@@ -97,6 +99,7 @@ int flan_init(const char *dev_uri, const char *mddev_uri, const char *pool_name,
   struct fla_open_opts open_opts = {0};
   struct xnvme_opts x_opts = xnvme_opts_default();
 
+  pthread_mutex_init(&flan_mutex, NULL);
   *flanh = malloc(sizeof(struct flan_handle));
   memset(*flanh, 0, sizeof(struct flan_handle));
   memset(flan_otable, 0, sizeof(struct flan_ohandle) * FLAN_MAX_OPEN_OBJECTS);
@@ -347,23 +350,29 @@ static int revcmp(char const * l, char const * r)
   }
 }
 
-struct flan_oinfo *flan_find_oinfo(struct flan_handle *flanh, const char *name)
+struct flan_oinfo *flan_find_oinfo(struct flan_handle *flanh, const char *name, uint32_t * cur)
 {
   struct flan_oinfo *oinfo;
 
+  pthread_mutex_lock(&flan_mutex);
   flan_reset_pool_dir();
   while (((oinfo = flan_get_oinfo(flanh, false)) != NULL) && revcmp(oinfo->name, name));
+  *cur = flan_dir.cur;
+  pthread_mutex_unlock(&flan_mutex);
 
   return oinfo;
 }
 
-struct flan_oinfo *flan_find_first_free_oinfo(struct flan_handle *flanh)
+struct flan_oinfo *flan_find_first_free_oinfo(struct flan_handle *flanh, uint32_t *cur)
 {
   struct flan_oinfo *oinfo;
 
+  pthread_mutex_lock(&flan_mutex);
   flan_reset_pool_dir();
   while (((oinfo = flan_get_oinfo(flanh, true)) != NULL) &&
          strlen(oinfo->name) > 0);
+  *cur = flan_dir.cur;
+  pthread_mutex_unlock(&flan_mutex);
 
   return oinfo;
 }
@@ -411,7 +420,7 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
   uint64_t oh_num;
   uint64_t ff_oh;
   struct fla_object *noh;
-  uint32_t bs = flanh->append_sz;
+  uint32_t bs = flanh->append_sz, res_cur;
 
   oh_num = flan_otable_search(basename((char *)name), &ff_oh);
  
@@ -430,9 +439,9 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
   }
 
   // Search through all the on disk MD
-  oinfo = flan_find_oinfo(flanh, basename((char *)name));
+  oinfo = flan_find_oinfo(flanh, basename((char *)name), &res_cur);
   if (!oinfo && (flags & FLAN_OPEN_FLAG_CREATE))
-    oinfo = flan_find_first_free_oinfo(flanh);
+    oinfo = flan_find_first_free_oinfo(flanh, &res_cur);
 
   if (!oinfo)
     return -EINVAL;
@@ -442,14 +451,18 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
     ret = flan_object_create(basename((char *)name), flanh, oinfo);
     if (ret)
     {
-      printf("flan object open: object create error\n");
       return ret;
     }
   }
 
   memcpy(&flan_otable[ff_oh].oinfo, oinfo, sizeof(struct flan_oinfo));
   flan_otable[ff_oh].flan_oh = flan_dir.fla_oh;
-  flan_otable[ff_oh].oinfo_off = (flan_dir.cur - 1) % flan_oi_ob; // Convert to byte offset for update
+  flan_otable[ff_oh].oinfo_off = (res_cur - 1) % flan_oi_ob; // Convert to byte offset for update
+                                                                  //
+  //fprintf(stderr, "found %s in MD and size is %"PRIu64" with off %"PRIu32", flan_dir.cur : %d"
+  //    " res_cur %"PRIu32"\n",
+  //    oinfo->name, oinfo->size, flan_otable[ff_oh].oinfo_off, flan_dir.cur, res_cur);
+
   if (flags & FLAN_OPEN_FLAG_WRITE)
     flan_otable[ff_oh].append_off = flan_otable[ff_oh].oinfo.size; // Verify zero on new entry
   else if (flags & FLAN_OPEN_FLAG_READ)
@@ -490,7 +503,8 @@ int flan_object_open(const char *name, struct flan_handle *flanh, uint64_t *oh, 
 int flan_object_delete(const char *name, struct flan_handle *flanh)
 {
   uint64_t oh = flan_otable_search(basename((char *)name), NULL);
-  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, basename((char *)name));
+  uint32_t res_cur;
+  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, basename((char *)name), &res_cur);
   
   // Invalidate any open handles, but keep use count to free ohandle when all openers have closed
   if (oh != FLAN_MAX_OPEN_OBJECTS)
@@ -693,7 +707,9 @@ ssize_t flan_object_read_rw(uint64_t oh, void *buf, size_t offset, size_t len,
 
   // Cant read past end of file
   if (offset + len > oinfo->size)
+  {
     len = oinfo->size - offset;
+  }
 
   // Aligned start and end go straight to the underlying storage if buffer is aligned
   if (!(offset % bs) && !(len % bs))
@@ -719,9 +735,15 @@ ssize_t flan_object_read(uint64_t oh, void *buf, size_t offset, size_t len,
                            struct flan_handle *flanh)
 {
   struct flan_oinfo *oinfo = &flan_otable[oh].oinfo;
+
   // Cant read past end of file
   if (offset + len > oinfo->size)
+  {
+    if(offset > oinfo->size)
+      fprintf(stderr, "we have a problem\n");
+
     len = oinfo->size - offset;
+  }
 
   if (flan_otable[oh].o_flags & FLAN_OPEN_FLAG_WRITE)
     return flan_object_read_rw(oh, buf, offset, len, flanh, oinfo);
@@ -887,7 +909,8 @@ uint32_t flan_dev_bs(struct flan_handle *flanh)
 // TODO update to reflect object table
 int flan_object_rename(const char *oldname, const char *newname, struct flan_handle *flanh)
 {
-  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, basename((char *)oldname));
+  uint32_t res_cur;
+  struct flan_oinfo *oinfo = flan_find_oinfo(flanh, basename((char *)oldname), &res_cur);
   unsigned int namelen = strlen(basename((char *)newname));
   uint64_t oh;
 
@@ -959,6 +982,8 @@ int flan_object_close(uint64_t oh, struct flan_handle *flanh)
     }
     else
     {
+    //  fprintf(stderr, "updating oh : %"PRIu64" to flan_dir. Size : %"PRIu64" to offset : %"PRIu32"\n",
+    //      oh, flan_otable[oh].oinfo.size, flan_otable[oh].oinfo_off);
       memcpy(((struct flan_oinfo *)flan_dir.buf) + flan_otable[oh].oinfo_off, &flan_otable[oh].oinfo,
           sizeof(struct flan_oinfo));
     }
