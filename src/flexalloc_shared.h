@@ -85,6 +85,7 @@ struct fla_fns
                               struct fla_object const *object, fla_root_object_set_action act);
   int (*pool_get_root_object)(struct flexalloc const * const fs, struct fla_pool const * pool,
                               struct fla_object *object);
+  int (*fla_action)();
 };
 
 struct flexalloc *
@@ -98,7 +99,6 @@ fla_fs_set_user(void *user_data);
 
 void *
 fla_fs_get_user();
-
 
 #ifdef __cplusplus
 }
